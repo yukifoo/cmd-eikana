@@ -36,29 +36,15 @@ jobs:
           ONLY_ACTIVE_ARCH=NO \
           archive
     
-    - name: Export Archive
+    - name: Extract App from Archive
       run: |
-        # Create export options plist for ad-hoc signing
-        cat > export_options.plist <<EOF
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-          <key>method</key>
-          <string>mac-application</string>
-          <key>teamID</key>
-          <string></string>
-          <key>signingStyle</key>
-          <string>automatic</string>
-        </dict>
-        </plist>
-        EOF
+        # Copy the app from the archive
+        mkdir -p "${{ github.workspace }}/build/export"
+        cp -R "${{ github.workspace }}/build/cmd-eikana.xcarchive/Products/Applications/⌘英かな.app" \
+              "${{ github.workspace }}/build/export/"
         
-        # Export the app
-        xcodebuild -exportArchive \
-          -archivePath "${{ github.workspace }}/build/cmd-eikana.xcarchive" \
-          -exportPath "${{ github.workspace }}/build/export" \
-          -exportOptionsPlist export_options.plist
+        # Ad-hoc sign the app
+        codesign --force --deep --sign - "${{ github.workspace }}/build/export/⌘英かな.app"
     
     - name: Verify Universal Binary
       run: |
