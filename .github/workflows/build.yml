@@ -1,0 +1,122 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v2.2.4)'
+        required: true
+        default: 'v2.2.4'
+
+jobs:
+  build:
+    runs-on: macos-13
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Xcode
+      run: |
+        sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+        xcodebuild -version
+    
+    
+    - name: Build Universal Binary
+      run: |
+        # Build for Release configuration
+        xcodebuild -project "⌘英かな.xcodeproj" \
+          -scheme "⌘英かな" \
+          -configuration Release \
+          -archivePath "${{ github.workspace }}/build/cmd-eikana.xcarchive" \
+          ARCHS="x86_64 arm64" \
+          ONLY_ACTIVE_ARCH=NO \
+          archive
+    
+    - name: Export Archive
+      run: |
+        # Create export options plist for ad-hoc signing
+        cat > export_options.plist <<EOF
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+          <key>method</key>
+          <string>mac-application</string>
+          <key>teamID</key>
+          <string></string>
+          <key>signingStyle</key>
+          <string>automatic</string>
+        </dict>
+        </plist>
+        EOF
+        
+        # Export the app
+        xcodebuild -exportArchive \
+          -archivePath "${{ github.workspace }}/build/cmd-eikana.xcarchive" \
+          -exportPath "${{ github.workspace }}/build/export" \
+          -exportOptionsPlist export_options.plist
+    
+    - name: Verify Universal Binary
+      run: |
+        # Check that the app is a universal binary
+        lipo -info "${{ github.workspace }}/build/export/⌘英かな.app/Contents/MacOS/⌘英かな"
+    
+    - name: Create DMG
+      run: |
+        # Create a temporary directory for DMG contents
+        mkdir -p dmg_contents
+        cp -R "${{ github.workspace }}/build/export/⌘英かな.app" dmg_contents/
+        
+        # Create DMG
+        hdiutil create -volname "⌘英かな" \
+          -srcfolder dmg_contents \
+          -ov -format UDZO \
+          "${{ github.workspace }}/cmd-eikana.dmg"
+    
+    - name: Calculate SHA256
+      id: sha256
+      run: |
+        SHA256=$(shasum -a 256 "${{ github.workspace }}/cmd-eikana.dmg" | awk '{print $1}')
+        echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+        echo "SHA256: $SHA256"
+    
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          cmd-eikana.dmg
+        draft: false
+        prerelease: false
+        body: |
+          ## ⌘英かな (cmd-eikana)
+          
+          Universal Binary (Intel + Apple Silicon) build of cmd-eikana.
+          
+          ### Installation via Homebrew
+          ```bash
+          brew tap yukifoo/tap
+          brew install --cask cmd-eikana
+          ```
+          
+          ### Manual Installation
+          1. Download `cmd-eikana.dmg`
+          2. Open the DMG file
+          3. Drag ⌘英かな.app to Applications folder
+          
+          ### Checksum
+          SHA256: `${{ steps.sha256.outputs.sha256 }}`
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Upload Artifact
+      if: github.event_name == 'workflow_dispatch'
+      uses: actions/upload-artifact@v3
+      with:
+        name: cmd-eikana-universal
+        path: |
+          cmd-eikana.dmg
