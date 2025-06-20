@@ -52,6 +52,9 @@ jobs:
           --timestamp \
           "${{ github.workspace }}/build/export/⌘英かな.app"
         
+        # Remove quarantine attributes that might interfere with Gatekeeper
+        xattr -cr "${{ github.workspace }}/build/export/⌘英かな.app" || true
+        
         # Verify the signature
         codesign --verify --verbose "${{ github.workspace }}/build/export/⌘英かな.app"
     
@@ -66,29 +69,40 @@ jobs:
         mkdir -p dmg_contents
         cp -R "${{ github.workspace }}/build/export/⌘英かな.app" dmg_contents/
         
-        # Create a simple instruction file
+        # Create a comprehensive instruction file
         cat > dmg_contents/インストール方法.txt <<EOF
         ⌘英かな インストール方法
 
-        1. ⌘英かな.app を Applications フォルダにドラッグしてください
+        ## 推奨インストール方法 (Homebrew)
+        brew tap yukifoo/tap
+        brew install --cask cmd-eikana
 
-        2. 初回起動時の注意:
-           - Controlキーを押しながらアプリをクリック（または右クリック）
-           - 「開く」を選択
-           - 警告ダイアログで「開く」をクリック
+        ## 手動インストール方法
+        1. ⌘英かな.app を Applications フォルダにドラッグ
+
+        2. Gatekeeper警告が表示される場合:
+           方法A: Controlキーを押しながらアプリをクリック → 「開く」
+           方法B: ターミナルで以下を実行:
+           sudo xattr -rd com.apple.quarantine /Applications/⌘英かな.app
 
         3. アクセシビリティの許可:
-           - システム設定 > プライバシーとセキュリティ > アクセシビリティ
-           - ⌘英かな.app にチェックを入れる
+           システム設定 > プライバシーとセキュリティ > アクセシビリティ
+           ⌘英かな.app にチェックを入れる
 
         詳細: https://github.com/yukifoo/cmd-eikana
         EOF
+        
+        # Remove extended attributes from DMG contents
+        find dmg_contents -type f -exec xattr -c {} \; || true
         
         # Create DMG
         hdiutil create -volname "⌘英かな" \
           -srcfolder dmg_contents \
           -ov -format UDZO \
           "${{ github.workspace }}/cmd-eikana.dmg"
+        
+        # Remove quarantine attributes from DMG
+        xattr -cr "${{ github.workspace }}/cmd-eikana.dmg" || true
         
         # Sign the DMG
         codesign --force --sign - "${{ github.workspace }}/cmd-eikana.dmg"
